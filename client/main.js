@@ -1,7 +1,7 @@
 // signaling server URL (adjust for production)
 const SIGNALING_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
   ? 'ws://localhost:3000'
-  : 'wss://your-production-server.fly.dev'; // Replace with actual backend later
+  : 'wss://opendrop.onrender.com'; // Replace with actual backend later
 
 // State
 let ws;
