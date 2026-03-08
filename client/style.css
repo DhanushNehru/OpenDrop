@@ -21,10 +21,10 @@ body {
   font-family: 'Outfit', sans-serif;
   background-color: var(--bg-color);
   color: var(--text-main);
-  min-height: 100vh;
+  height: 100vh;
   display: flex;
   flex-direction: column;
-  overflow-x: hidden;
+  overflow: hidden;
   /* Beautiful dark mesh gradient */
   background-image:
     radial-gradient(at 0% 0%, rgba(59, 130, 246, 0.15) 0px, transparent 50%),
@@ -80,6 +80,7 @@ header {
 /* Main Area - Radar Layout */
 main {
   flex: 1;
+  min-height: 0;
   position: relative;
   display: flex;
   justify-content: center;
@@ -90,6 +91,8 @@ main {
   position: relative;
   width: 600px;
   height: 600px;
+  max-height: 100%;
+  max-width: 100%;
   display: flex;
   justify-content: center;
   align-items: center;
@@ -386,12 +389,18 @@ main {
     width: 350px;
     height: 350px;
   }
+  header {
+    padding: 1rem 1rem;
+  }
   .header-actions {
     gap: 0.5rem !important;
   }
   .share-link-btn {
     padding: 0.4rem 0.75rem !important;
     font-size: 0.8rem !important;
+  }
+  .site-footer {
+    padding: 0.5rem 1rem !important;
   }
 }
 
@@ -489,10 +498,11 @@ main {
 /* Footer */
 .site-footer {
   text-align: center;
-  padding: 1.25rem 2rem;
+  padding: 0.75rem 2rem;
   color: var(--text-muted);
   font-size: 0.85rem;
   z-index: 10;
+  flex-shrink: 0;
 }
 
 .site-footer strong {
