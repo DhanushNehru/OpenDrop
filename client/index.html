@@ -1,96 +1,15 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📡</text></svg>" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>OpenDrop - Secure Local WebRTC File Transfer</title>
-    <!-- Modern Font -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
-    <!-- UI Icons -->
-    <link href="https://cdn.jsdelivr.net/npm/remixicon@4.2.0/fonts/remixicon.css" rel="stylesheet" />
-    <!-- Main CSS -->
-    <link rel="stylesheet" href="./style.css">
-  </head>
-  <body>
-    <!-- Hidden file input for selecting files -->
-    <input type="file" id="fileInput" style="display: none;" />
-    <input type="file" id="shareFileInput" style="display: none;" />
-
-    <header>
-      <div class="logo">
-        <i class="ri-radar-fill"></i> OpenDrop
-      </div>
-      <div class="header-actions">
-        <button class="share-link-btn" id="shareLinkBtn">
-          <i class="ri-link"></i> Share via Link
-        </button>
-        <div class="status">
-          <div class="status-indicator offline" id="connectionStatusIndicator"></div>
-          <span id="connectionStatusText">Connecting...</span>
-        </div>
-      </div>
-    </header>
-
-    <main>
-      <div class="radar-container">
-        <!-- Center profile (You) -->
-        <div class="my-profile">
-          <div class="avatar my-avatar">
-            <i class="ri-user-line"></i>
-          </div>
-          <div class="my-name-tag">
-            <span id="myName">Loading...</span>
-            <span class="label">You</span>
-          </div>
-          <!-- Radar waves -->
-          <div class="wave wave1"></div>
-          <div class="wave wave2"></div>
-        </div>
-
-        <!-- Peers will be dynamically injected here -->
-        <div id="peersContainer"></div>
-      </div>
-    </main>
-
-    <!-- Overlay UI for incoming files, progress, etc -->
-    <div id="toastContainer" class="toast-container"></div>
-
-    <div id="modalOverlay" class="modal-overlay hidden">
-      <div class="modal">
-        <h3 id="modalTitle">Incoming File</h3>
-        <div class="modal-content" id="modalContent">
-          <!-- File details injected dynamically -->
-        </div>
-        <div class="modal-actions" id="modalActions">
-          <!-- Action buttons injected dynamically -->
-        </div>
-      </div>
-    </div>
-
-    <script type="module" src="./main.js"></script>
-
-    <footer class="site-footer">
-      <p>Made by <strong>Dhanush Nehru</strong></p>
-      <div class="social-links">
-        <a href="https://x.com/Dhanush_Nehru" target="_blank" rel="noopener noreferrer" title="X (Twitter)">
-          <i class="ri-twitter-x-line"></i>
-        </a>
-        <a href="https://instagram.com/dhanush_nehru" target="_blank" rel="noopener noreferrer" title="Instagram">
-          <i class="ri-instagram-line"></i>
-        </a>
-        <a href="https://github.com/DhanushNehru" target="_blank" rel="noopener noreferrer" title="GitHub">
-          <i class="ri-github-fill"></i>
-        </a>
-        <a href="https://www.youtube.com/@dhanushnehru" target="_blank" rel="noopener noreferrer" title="YouTube">
-          <i class="ri-youtube-line"></i>
-        </a>
-      </div>
-      <a class="star-btn" href="https://github.com/DhanushNehru/OpenDrop" target="_blank" rel="noopener noreferrer">
-        <i class="ri-star-line"></i> Star on GitHub
-      </a>
-    </footer>
-  </body>
+<head>
+    <meta charset="UTF-8">
+    <title>OpenDrop</title>
+    <style>
+        #alert-box { position: fixed; top: 20px; right: 20px; padding: 15px; border-radius: 5px; display: none; z-index: 1000; color: white; }
+        .error { background-color: #ff4d4d; }
+    </style>
+</head>
+<body>
+    <div id="alert-box"></div>
+    <script src="app.js"></script>
+</body>
 </html>
