@@ -129,7 +129,14 @@ function addPeer(id, name) {
     if (peers.has(id)) return;
 
     const angle = Math.random() * Math.PI * 2;
-    const distance = 150 + Math.random() * 100;
+        // Use container size to scale distance
+    const containerSize = Math.min(
+        document.querySelector('.radar-container').offsetWidth, 
+        document.querySelector('.radar-container').offsetHeight
+    );
+    const maxDistance = containerSize * 0.35; // 35% of container radius
+    const distance = maxDistance * (0.6 + Math.random() * 0.4);
+
     const x = Math.cos(angle) * distance;
     const y = Math.sin(angle) * distance;
 
