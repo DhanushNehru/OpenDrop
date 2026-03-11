@@ -45,34 +45,35 @@ const upload = multer({
     limits: { fileSize: MAX_FILE_SIZE }
 });
 
-// Upload endpoint
-app.post('/upload', upload.single('file'), (req, res) => {
-    if (!req.file) {
-        return res.status(400).json({ error: 'No file provided' });
+// Upload endpoint (supports single and multiple files)
+app.post('/upload', upload.array('files', 20), (req, res) => {
+    if (!req.files || req.files.length === 0) {
+        return res.status(400).json({ error: 'No files provided' });
     }
-
-    const fileId = uuidv4();
-    const expiresAt = Date.now() + FILE_EXPIRY_MS;
-
-    uploadedFiles.set(fileId, {
-        originalName: req.file.originalname,
-        mimeType: req.file.mimetype,
-        filePath: req.file.path,
-        size: req.file.size,
-        expiresAt
-    });
 
     const protocol = req.headers['x-forwarded-proto'] || req.protocol;
     const host = req.headers['x-forwarded-host'] || req.get('host');
-    const downloadUrl = `${protocol}://${host}/download/${fileId}`;
+    const expiresAt = Date.now() + FILE_EXPIRY_MS;
 
-    res.json({
-        id: fileId,
-        url: downloadUrl,
-        name: req.file.originalname,
-        size: req.file.size,
-        expiresIn: '24 hours'
+    const results = req.files.map(file => {
+        const fileId = uuidv4();
+        uploadedFiles.set(fileId, {
+            originalName: file.originalname,
+            mimeType: file.mimetype,
+            filePath: file.path,
+            size: file.size,
+            expiresAt
+        });
+        return {
+            id: fileId,
+            url: `${protocol}://${host}/download/${fileId}`,
+            name: file.originalname,
+            size: file.size,
+            expiresIn: '24 hours'
+        };
     });
+
+    res.json({ files: results });
 });
 
 // Download endpoint

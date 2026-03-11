@@ -15,9 +15,9 @@
     <link rel="stylesheet" href="./style.css">
   </head>
   <body>
-    <!-- Hidden file input for selecting files -->
-    <input type="file" id="fileInput" style="display: none;" />
-    <input type="file" id="shareFileInput" style="display: none;" />
+    <!-- Hidden file inputs for selecting files (multiple supported) -->
+    <input type="file" id="fileInput" multiple style="display: none;" />
+    <input type="file" id="shareFileInput" multiple style="display: none;" />
 
     <header>
       <div class="logo">
@@ -57,6 +57,61 @@
 
     <!-- Overlay UI for incoming files, progress, etc -->
     <div id="toastContainer" class="toast-container"></div>
+
+    <!-- Drop zone overlay for drag-and-drop -->
+    <div id="dropZoneOverlay" class="drop-zone-overlay hidden">
+      <div class="drop-zone-content">
+        <i class="ri-drag-drop-line"></i>
+        <p>Drop files here to send</p>
+      </div>
+    </div>
+
+    <!-- Batch file selection modal -->
+    <div id="batchModalOverlay" class="modal-overlay hidden">
+      <div class="modal batch-modal">
+        <h3 id="batchModalTitle">Send Files</h3>
+        <div class="batch-file-list" id="batchFileList">
+          <!-- File items injected dynamically -->
+        </div>
+        <div class="batch-summary" id="batchSummary"></div>
+        <div class="batch-add-more">
+          <button class="btn btn-secondary btn-add-files" id="btnAddMoreFiles">
+            <i class="ri-add-line"></i> Add More Files
+          </button>
+        </div>
+        <div class="modal-actions">
+          <button class="btn btn-secondary" id="btnCancelBatch">Cancel</button>
+          <button class="btn btn-primary" id="btnStartBatch">
+            <i class="ri-send-plane-fill"></i> Send All
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Batch transfer progress modal -->
+    <div id="batchProgressOverlay" class="modal-overlay hidden">
+      <div class="modal batch-modal">
+        <h3 id="batchProgressTitle">Sending Files</h3>
+        <div class="batch-file-list" id="batchProgressList">
+          <!-- Progress items injected dynamically -->
+        </div>
+        <div class="batch-summary" id="batchProgressSummary"></div>
+        <div class="modal-actions" id="batchProgressActions">
+        </div>
+      </div>
+    </div>
+
+    <!-- Batch incoming files modal -->
+    <div id="batchIncomingOverlay" class="modal-overlay hidden">
+      <div class="modal batch-modal">
+        <h3 id="batchIncomingTitle">Incoming Files</h3>
+        <div class="batch-file-list" id="batchIncomingList">
+        </div>
+        <div class="batch-summary" id="batchIncomingSummary"></div>
+        <div class="modal-actions" id="batchIncomingActions">
+        </div>
+      </div>
+    </div>
 
     <div id="modalOverlay" class="modal-overlay hidden">
       <div class="modal">

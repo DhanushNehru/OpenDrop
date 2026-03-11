@@ -482,6 +482,205 @@ main {
   text-align: center;
 }
 
+/* Drop Zone Overlay */
+.drop-zone-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(59, 130, 246, 0.15);
+  backdrop-filter: blur(8px);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 200;
+  border: 3px dashed var(--accent-primary);
+  transition: opacity 0.3s ease;
+}
+
+.drop-zone-overlay.hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.drop-zone-content {
+  text-align: center;
+  color: var(--accent-primary);
+}
+
+.drop-zone-content i {
+  font-size: 4rem;
+  margin-bottom: 1rem;
+  display: block;
+}
+
+.drop-zone-content p {
+  font-size: 1.5rem;
+  font-weight: 600;
+}
+
+/* Batch Modal */
+.batch-modal {
+  max-width: 500px;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.batch-file-list {
+  max-height: 300px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+  padding-right: 0.25rem;
+}
+
+.batch-file-list::-webkit-scrollbar {
+  width: 4px;
+}
+
+.batch-file-list::-webkit-scrollbar-thumb {
+  background: var(--glass-border);
+  border-radius: 2px;
+}
+
+.batch-file-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  background: rgba(0, 0, 0, 0.2);
+  padding: 0.75rem 1rem;
+  border-radius: 12px;
+  border: 1px solid var(--glass-border);
+  transition: all 0.2s ease;
+}
+
+.batch-file-item.active {
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 10px rgba(59, 130, 246, 0.15);
+}
+
+.batch-file-item.done {
+  border-color: var(--success);
+}
+
+.batch-file-item.done .batch-file-icon {
+  color: var(--success);
+}
+
+.batch-file-item.active .batch-file-icon {
+  color: var(--accent-primary);
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.batch-file-icon {
+  font-size: 1.5rem;
+  color: var(--accent-primary);
+  flex-shrink: 0;
+}
+
+.batch-file-details {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.batch-file-name {
+  font-weight: 600;
+  font-size: 0.9rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.batch-file-size {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+.batch-file-remove {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 0.25rem;
+  border-radius: 6px;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.1rem;
+}
+
+.batch-file-remove:hover {
+  color: var(--danger);
+  background: rgba(239, 68, 68, 0.15);
+}
+
+.batch-file-progress-wrap {
+  width: 60px;
+  flex-shrink: 0;
+}
+
+.progress-container.small {
+  height: 4px;
+  margin-top: 0;
+}
+
+.batch-summary {
+  text-align: center;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  margin-bottom: 1rem;
+}
+
+.batch-add-more {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 1rem;
+}
+
+.btn-add-files {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.85rem;
+  padding: 0.5rem 1rem;
+}
+
+/* Compact share link box inside batch items */
+.share-link-box.compact {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  margin-top: 0;
+  flex-shrink: 0;
+}
+
+.share-link-box.compact input {
+  width: 120px;
+  font-size: 0.72rem;
+  padding: 0.25rem 0.4rem;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid var(--glass-border);
+  border-radius: 6px;
+  color: var(--accent-primary);
+  outline: none;
+}
+
+.share-link-box.compact .btn-copy {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  font-size: 0.8rem;
+}
+
 /* Footer */
 .site-footer {
   text-align: center;

@@ -43,6 +43,33 @@ let receivedChunks = [];
 let receivedSize = 0;
 let currentTransferTarget = null;
 
+// Batch transfer state
+let batchFiles = []; // Array of File objects staged for sending
+let sendQueue = []; // Queue of  file, peerId  for sending
+let currentSendIndex = -1;
+let isBatchSending = false;
+
+// Batch incoming state
+let incomingBatch = []; // Array of - name, size, mime, senderId 
+let incomingBatchTotal = 0;
+let incomingBatchReceived = 0;
+let currentIncomingIndex = -1;
+
+// Batch UI Elements
+const batchModalOverlay = document.getElementById('batchModalOverlay');
+const batchFileList = document.getElementById('batchFileList');
+const batchSummary = document.getElementById('batchSummary');
+const batchProgressOverlay = document.getElementById('batchProgressOverlay');
+const batchProgressList = document.getElementById('batchProgressList');
+const batchProgressSummary = document.getElementById('batchProgressSummary');
+const batchProgressActions = document.getElementById('batchProgressActions');
+const batchIncomingOverlay = document.getElementById('batchIncomingOverlay');
+const batchIncomingTitle = document.getElementById('batchIncomingTitle');
+const batchIncomingList = document.getElementById('batchIncomingList');
+const batchIncomingSummary = document.getElementById('batchIncomingSummary');
+const batchIncomingActions = document.getElementById('batchIncomingActions');
+const dropZoneOverlay = document.getElementById('dropZoneOverlay');
+
 function connectSignaling() {
     updateStatus('connecting', 'Connecting...');
     ws = new WebSocket(SIGNALING_URL);
@@ -249,33 +276,246 @@ function setupDataChannel(peerId, dc) {
         if (typeof e.data === 'string') {
             const msg = JSON.parse(e.data);
             if (msg.type === 'file-header') handleIncomingFileRequest(msg, peerId);
+            else if (msg.type === 'batch-header') handleIncomingBatchHeader(msg, peerId);
             else if (msg.type === 'transfer-accepted') startSendingFile(peerId);
-            else if (msg.type === 'transfer-rejected') showToast('Transfer rejected', 'error');
+            else if (msg.type === 'transfer-rejected') {
+                if (isBatchSending) {
+                    isBatchSending = false;
+                    batchProgressOverlay.classList.add('hidden');
+                }
+                showToast('Transfer rejected', 'error');
+            }
             else if (msg.type === 'file-complete') finishReceivingFile();
         } else {
-            // Binary chunk received
             receiveChunk(e.data);
         }
     };
 }
 
-fileInput.addEventListener('change', async (e) => {
-    const file = e.target.files[0];
-    if (!file || !currentTransferTarget) return;
-
-    // If connection isn't established, establish it first
-    const peer = peers.get(currentTransferTarget);
-    if (!peer.connection || peer.connection.connectionState !== 'connected') {
-        await startConnection(currentTransferTarget);
-        // Wait briefly for connection (in reality, should listen for connection state change)
-        setTimeout(() => sendFileHeader(currentTransferTarget, file), 1000);
-    } else {
-        sendFileHeader(currentTransferTarget, file);
-    }
-
-    fileInput.value = ''; // Reset input
+fileInput.addEventListener('change', (e) => {
+    const files = Array.from(e.target.files);
+    if (!files.length || !currentTransferTarget) return;
+    fileInput.value = '';
+    openBatchModal(files, currentTransferTarget);
 });
 
+// --- Drag and Drop Support ---
+let dragCounter = 0;
+
+document.addEventListener('dragenter', (e) => {
+    e.preventDefault();
+    dragCounter++;
+    if (dragCounter === 1) {
+        dropZoneOverlay.classList.remove('hidden');
+    }
+});
+
+document.addEventListener('dragleave', (e) => {
+    e.preventDefault();
+    dragCounter--;
+    if (dragCounter === 0) {
+        dropZoneOverlay.classList.add('hidden');
+    }
+});
+
+document.addEventListener('dragover', (e) => {
+    e.preventDefault();
+});
+
+document.addEventListener('drop', (e) => {
+    e.preventDefault();
+    dragCounter = 0;
+    dropZoneOverlay.classList.add('hidden');
+
+    const files = Array.from(e.dataTransfer.files);
+    if (!files.length) return;
+
+    // Find the first peer to send to, or prompt user
+    if (peers.size === 0) {
+        showToast('No peers available to send files to', 'error');
+        return;
+    }
+
+    if (peers.size === 1) {
+        const peerId = peers.keys().next().value;
+        currentTransferTarget = peerId;
+        openBatchModal(files, peerId);
+    } else {
+        // If batch modal is already open, add to it
+        if (!batchModalOverlay.classList.contains('hidden')) {
+            addFilesToBatch(files);
+        } else {
+            showToast('Click on a peer first, then drag files', 'info');
+        }
+    }
+});
+
+// --- Batch Modal UI ---
+
+function formatFileSize(bytes) {
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
+}
+
+function openBatchModal(files, peerId) {
+    batchFiles = [...files];
+    currentTransferTarget = peerId;
+    renderBatchFileList();
+    batchModalOverlay.classList.remove('hidden');
+
+    const peer = peers.get(peerId);
+    document.getElementById('batchModalTitle').textContent = `Send to ${peer ? peer.name : 'Peer'}`;
+
+    document.getElementById('btnCancelBatch').onclick = () => {
+        batchFiles = [];
+        batchModalOverlay.classList.add('hidden');
+    };
+
+    document.getElementById('btnAddMoreFiles').onclick = () => {
+        const addInput = document.createElement('input');
+        addInput.type = 'file';
+        addInput.multiple = true;
+        addInput.style.display = 'none';
+        addInput.addEventListener('change', () => {
+            addFilesToBatch(Array.from(addInput.files));
+            addInput.remove();
+        });
+        document.body.appendChild(addInput);
+        addInput.click();
+    };
+
+    document.getElementById('btnStartBatch').onclick = () => {
+        if (batchFiles.length === 0) return;
+        batchModalOverlay.classList.add('hidden');
+        startBatchTransfer(peerId, [...batchFiles]);
+    };
+}
+
+function addFilesToBatch(files) {
+    batchFiles.push(...files);
+    renderBatchFileList();
+}
+
+function removeBatchFile(index) {
+    batchFiles.splice(index, 1);
+    renderBatchFileList();
+}
+
+function renderBatchFileList() {
+    batchFileList.innerHTML = batchFiles.map((f, i) => `
+        <div class="batch-file-item">
+            <i class="ri-file-line batch-file-icon"></i>
+            <div class="batch-file-details">
+                <span class="batch-file-name">${f.name}</span>
+                <span class="batch-file-size">${formatFileSize(f.size)}</span>
+            </div>
+            <button class="batch-file-remove" data-index="${i}" title="Remove">
+                <i class="ri-close-line"></i>
+            </button>
+        </div>
+    `).join('');
+
+    const totalSize = batchFiles.reduce((s, f) => s + f.size, 0);
+    batchSummary.textContent = `${batchFiles.length} file${batchFiles.length !== 1 ? 's' : ''} \u2022 ${formatFileSize(totalSize)}`;
+
+    batchFileList.querySelectorAll('.batch-file-remove').forEach(btn => {
+        btn.addEventListener('click', () => removeBatchFile(parseInt(btn.dataset.index)));
+    });
+}
+
+// --- Batch Transfer (WebRTC, sequential per-file) ---
+
+async function startBatchTransfer(peerId, files) {
+    const peer = peers.get(peerId);
+    if (!peer) return;
+
+    sendQueue = files.map(f => ({ file: f, peerId }));
+    currentSendIndex = 0;
+    isBatchSending = true;
+
+    // Show progress overlay
+    batchProgressOverlay.classList.remove('hidden');
+    document.getElementById('batchProgressTitle').textContent = `Sending to ${peer.name}`;
+    renderBatchProgressList();
+    batchProgressActions.innerHTML = '';
+
+    // Ensure connection
+    if (!peer.connection || peer.connection.connectionState !== 'connected') {
+        await startConnection(peerId);
+        await new Promise(r => setTimeout(r, 1000));
+    }
+
+    sendNextInQueue(peerId);
+}
+
+function renderBatchProgressList() {
+    batchProgressList.innerHTML = sendQueue.map((item, i) => {
+        let statusClass = 'pending';
+        let statusIcon = 'ri-time-line';
+        if (i < currentSendIndex) { statusClass = 'done'; statusIcon = 'ri-check-line'; }
+        else if (i === currentSendIndex) { statusClass = 'active'; statusIcon = 'ri-loader-4-line'; }
+
+        return `
+            <div class="batch-file-item ${statusClass}">
+                <i class="${statusIcon} batch-file-icon"></i>
+                <div class="batch-file-details">
+                    <span class="batch-file-name">${item.file.name}</span>
+                    <span class="batch-file-size">${formatFileSize(item.file.size)}</span>
+                </div>
+                <div class="batch-file-progress-wrap">
+                    <div class="progress-container small">
+                        <div class="progress-bar" id="sendProgress-${i}" style="width:${i < currentSendIndex ? '100' : '0'}%"></div>
+                    </div>
+                </div>
+            </div>
+        `;
+    }).join('');
+
+    batchProgressSummary.textContent = `${Math.min(currentSendIndex, sendQueue.length)}/${sendQueue.length} completed`;
+}
+
+function sendNextInQueue(peerId) {
+    if (currentSendIndex >= sendQueue.length) {
+        // All done
+        isBatchSending = false;
+        batchProgressSummary.textContent = `All ${sendQueue.length} files sent!`;
+        batchProgressActions.innerHTML = `<button class="btn btn-primary" id="btnCloseBatchProgress">Done</button>`;
+        document.getElementById('btnCloseBatchProgress').onclick = () => {
+            batchProgressOverlay.classList.add('hidden');
+        };
+        showToast(`${sendQueue.length} files sent successfully`, 'success');
+        return;
+    }
+
+    renderBatchProgressList();
+    const item = sendQueue[currentSendIndex];
+    sendFileForBatch(peerId, item.file, currentSendIndex);
+}
+
+function sendFileForBatch(peerId, file, queueIndex) {
+    const peer = peers.get(peerId);
+    if (!peer || !peer.dataChannel || peer.dataChannel.readyState !== 'open') {
+        showToast('Connection not ready. Try again.', 'error');
+        isBatchSending = false;
+        batchProgressOverlay.classList.add('hidden');
+        return;
+    }
+
+    peer.pendingFile = file;
+    peer.pendingQueueIndex = queueIndex;
+
+    peer.dataChannel.send(JSON.stringify({
+        type: 'batch-header',
+        name: file.name,
+        size: file.size,
+        mime: file.type,
+        index: queueIndex,
+        total: sendQueue.length
+    }));
+}
+
+// Legacy single-file header for backwards-compatibility
 function sendFileHeader(peerId, file) {
     const peer = peers.get(peerId);
     if (!peer || !peer.dataChannel || peer.dataChannel.readyState !== 'open') {
@@ -283,10 +523,8 @@ function sendFileHeader(peerId, file) {
         return;
     }
 
-    // Attach file to peer object temporarily
     peer.pendingFile = file;
 
-    // Send metadata first natively over datachannel
     peer.dataChannel.send(JSON.stringify({
         type: 'file-header',
         name: file.name,
@@ -301,12 +539,10 @@ function startSendingFile(peerId) {
     const peer = peers.get(peerId);
     const file = peer.pendingFile;
     const dc = peer.dataChannel;
+    const queueIndex = peer.pendingQueueIndex;
 
     if (!file || !dc) return;
 
-    showToast(`Sending ${file.name}...`, 'info');
-
-    // UI Progress could be added here
     let offset = 0;
 
     const readSlice = (o) => {
@@ -315,22 +551,33 @@ function startSendingFile(peerId) {
         reader.onload = (e) => {
             if (dc.readyState !== 'open') return;
 
-            // Send chunk
             dc.send(e.target.result);
             offset += e.target.result.byteLength;
 
+            // Update per-file progress bar if batch sending
+            if (queueIndex !== undefined) {
+                const pct = (offset / file.size) * 100;
+                const bar = document.getElementById(`sendProgress-${queueIndex}`);
+                if (bar) bar.style.width = `${pct}%`;
+            }
+
             if (offset < file.size) {
-                // Throttle sending if buffer is full
-                if(dc.bufferedAmount > 1024 * 1024) {
+                if (dc.bufferedAmount > 1024 * 1024) {
                     setTimeout(() => readSlice(offset), 50);
                 } else {
                     readSlice(offset);
                 }
             } else {
-                // Complete
                 dc.send(JSON.stringify({ type: 'file-complete' }));
-                showToast('File sent successfully', 'success');
                 peer.pendingFile = null;
+
+                // If batch, advance queue
+                if (isBatchSending && queueIndex !== undefined) {
+                    currentSendIndex++;
+                    sendNextInQueue(peerId);
+                } else {
+                    showToast('File sent successfully', 'success');
+                }
             }
         };
         reader.readAsArrayBuffer(slice);
@@ -339,7 +586,7 @@ function startSendingFile(peerId) {
     readSlice(0);
 }
 
-// Receiving
+// Receiving - single file (legacy)
 function handleIncomingFileRequest(msg, senderId) {
     const sender = peers.get(senderId);
     if (!sender) return;
@@ -353,14 +600,13 @@ function handleIncomingFileRequest(msg, senderId) {
     receivedChunks = [];
     receivedSize = 0;
 
-    // Show Modal
     modalTitle.textContent = `${sender.name} wants to send you a file`;
     modalContent.innerHTML = `
         <div class="file-info">
             <i class="ri-file-line"></i>
             <div class="file-details">
                 <span class="file-name">${msg.name}</span>
-                <span class="file-size">${(msg.size / (1024*1024)).toFixed(2)} MB</span>
+                <span class="file-size">${formatFileSize(msg.size)}</span>
             </div>
         </div>
         <div class="progress-container hidden" id="receiveProgressContainer">
@@ -385,9 +631,90 @@ function handleIncomingFileRequest(msg, senderId) {
         document.getElementById('btnReject').style.display = 'none';
         document.getElementById('btnAccept').style.display = 'none';
         document.getElementById('receiveProgressContainer').classList.remove('hidden');
-
         sender.dataChannel.send(JSON.stringify({ type: 'transfer-accepted' }));
     };
+}
+
+// Receiving - batch files
+function handleIncomingBatchHeader(msg, senderId) {
+    const sender = peers.get(senderId);
+    if (!sender) return;
+
+    // Show the batch incoming UI
+    if (msg.index === 0) {
+        incomingBatch = [];
+        incomingBatchTotal = msg.total;
+        incomingBatchReceived = 0;
+        currentIncomingIndex = 0;
+
+        // Build placeholder list
+        batchIncomingTitle.textContent = `${sender.name} wants to send ${msg.total} file${msg.total > 1 ? 's' : ''}`;
+        batchIncomingOverlay.classList.remove('hidden');
+
+        batchIncomingActions.innerHTML = `
+            <button class="btn btn-secondary" id="btnRejectBatch">Decline All</button>
+            <button class="btn btn-primary" id="btnAcceptBatch">Accept All</button>
+        `;
+
+        document.getElementById('btnRejectBatch').onclick = () => {
+            sender.dataChannel.send(JSON.stringify({ type: 'transfer-rejected' }));
+            batchIncomingOverlay.classList.add('hidden');
+            incomingFile = null;
+            incomingBatch = [];
+        };
+
+        document.getElementById('btnAcceptBatch').onclick = () => {
+            batchIncomingActions.innerHTML = '';
+            sender.dataChannel.send(JSON.stringify({ type: 'transfer-accepted' }));
+        };
+    }
+
+    // Record file info
+    incomingBatch[msg.index] = { name: msg.name, size: msg.size, mime: msg.mime };
+    renderIncomingBatchList();
+
+    // Set current incoming file for chunk receiving
+    incomingFile = {
+        name: msg.name,
+        size: msg.size,
+        mime: msg.mime,
+        senderId: senderId,
+        batchIndex: msg.index
+    };
+    receivedChunks = [];
+    receivedSize = 0;
+
+    // Auto-accept subsequent files after first was accepted
+    if (msg.index > 0) {
+        sender.dataChannel.send(JSON.stringify({ type: 'transfer-accepted' }));
+    }
+}
+
+function renderIncomingBatchList() {
+    batchIncomingList.innerHTML = incomingBatch.map((f, i) => {
+        if (!f) return '';
+        let statusClass = 'pending';
+        let statusIcon = 'ri-time-line';
+        if (i < incomingBatchReceived) { statusClass = 'done'; statusIcon = 'ri-check-line'; }
+        else if (i === currentIncomingIndex) { statusClass = 'active'; statusIcon = 'ri-loader-4-line'; }
+
+        return `
+            <div class="batch-file-item ${statusClass}">
+                <i class="${statusIcon} batch-file-icon"></i>
+                <div class="batch-file-details">
+                    <span class="batch-file-name">${f.name}</span>
+                    <span class="batch-file-size">${formatFileSize(f.size)}</span>
+                </div>
+                <div class="batch-file-progress-wrap">
+                    <div class="progress-container small">
+                        <div class="progress-bar" id="recvProgress-${i}" style="width:${i < incomingBatchReceived ? '100' : '0'}%"></div>
+                    </div>
+                </div>
+            </div>
+        `;
+    }).join('');
+
+    batchIncomingSummary.textContent = `${incomingBatchReceived}/${incomingBatchTotal} received`;
 }
 
 function receiveChunk(data) {
@@ -396,8 +723,15 @@ function receiveChunk(data) {
     receivedSize += data.byteLength;
 
     const progress = (receivedSize / incomingFile.size) * 100;
-    const bar = document.getElementById('receiveProgressBar');
-    if (bar) bar.style.width = `${progress}%`;
+
+    // Update correct progress bar based on batch or single
+    if (incomingFile.batchIndex !== undefined) {
+        const bar = document.getElementById(`recvProgress-${incomingFile.batchIndex}`);
+        if (bar) bar.style.width = `${progress}%`;
+    } else {
+        const bar = document.getElementById('receiveProgressBar');
+        if (bar) bar.style.width = `${progress}%`;
+    }
 }
 
 function finishReceivingFile() {
@@ -406,7 +740,6 @@ function finishReceivingFile() {
     const blob = new Blob(receivedChunks, { type: incomingFile.mime });
     const url = URL.createObjectURL(blob);
 
-    // Auto download
     const a = document.createElement('a');
     a.href = url;
     a.download = incomingFile.name;
@@ -415,8 +748,25 @@ function finishReceivingFile() {
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
 
-    showToast(`Received ${incomingFile.name}`, 'success');
-    modalOverlay.classList.add('hidden');
+    // If batch receiving
+    if (incomingFile.batchIndex !== undefined) {
+        incomingBatchReceived++;
+        currentIncomingIndex = incomingFile.batchIndex + 1;
+        renderIncomingBatchList();
+
+        if (incomingBatchReceived >= incomingBatchTotal) {
+            batchIncomingSummary.textContent = `All ${incomingBatchTotal} files received!`;
+            batchIncomingActions.innerHTML = `<button class="btn btn-primary" id="btnCloseIncoming">Done</button>`;
+            document.getElementById('btnCloseIncoming').onclick = () => {
+                batchIncomingOverlay.classList.add('hidden');
+            };
+            showToast(`Received ${incomingBatchTotal} files`, 'success');
+        }
+    } else {
+        showToast(`Received ${incomingFile.name}`, 'success');
+        modalOverlay.classList.add('hidden');
+    }
+
     incomingFile = null;
     receivedChunks = [];
 }
@@ -439,31 +789,36 @@ shareLinkBtn.addEventListener('click', () => {
 });
 
 shareFileInput.addEventListener('change', async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
+    const files = Array.from(e.target.files);
+    if (!files.length) return;
     shareFileInput.value = '';
 
-    // Show uploading modal
-    modalTitle.textContent = 'Uploading File';
+    const totalSize = files.reduce((s, f) => s + f.size, 0);
+
+    modalTitle.textContent = `Uploading ${files.length} File${files.length > 1 ? 's' : ''}`;
     modalContent.innerHTML = `
-        <div class="file-info">
-            <i class="ri-upload-cloud-line"></i>
-            <div class="file-details">
-                <span class="file-name">${file.name}</span>
-                <span class="file-size">${(file.size / (1024 * 1024)).toFixed(2)} MB</span>
-            </div>
+        <div class="batch-file-list" id="uploadFileList">
+            ${files.map((f, i) => `
+                <div class="batch-file-item">
+                    <i class="ri-upload-cloud-line batch-file-icon"></i>
+                    <div class="batch-file-details">
+                        <span class="batch-file-name">${f.name}</span>
+                        <span class="batch-file-size">${formatFileSize(f.size)}</span>
+                    </div>
+                </div>
+            `).join('')}
         </div>
         <div class="progress-container" id="uploadProgressContainer">
             <div class="progress-bar" id="uploadProgressBar"></div>
         </div>
-        <p class="upload-status" id="uploadStatus">Uploading...</p>
+        <p class="upload-status" id="uploadStatus">Uploading ${files.length} file${files.length > 1 ? 's' : ''}... (${formatFileSize(totalSize)})</p>
     `;
     modalActions.innerHTML = '';
     modalOverlay.classList.remove('hidden');
 
     try {
         const formData = new FormData();
-        formData.append('file', file);
+        files.forEach(f => formData.append('files', f));
 
         const xhr = new XMLHttpRequest();
         xhr.open('POST', `${API_URL}/upload`);
@@ -481,7 +836,7 @@ shareFileInput.addEventListener('change', async (e) => {
                 const data = JSON.parse(xhr.responseText);
                 showShareLinkResult(data);
             } else {
-                showToast('Upload failed. File may be too large (max 100MB).', 'error');
+                showToast('Upload failed. Files may be too large (max 100MB each).', 'error');
                 modalOverlay.classList.add('hidden');
             }
         };
@@ -499,24 +854,32 @@ shareFileInput.addEventListener('change', async (e) => {
 });
 
 function showShareLinkResult(data) {
-    modalTitle.textContent = 'File Ready to Share';
+    const filesList = data.files || [data]; // backward compat
+    const totalSize = filesList.reduce((s, f) => s + f.size, 0);
+
+    modalTitle.textContent = `${filesList.length} File${filesList.length > 1 ? 's' : ''} Ready to Share`;
     modalContent.innerHTML = `
-        <div class="file-info">
-            <i class="ri-check-double-line"></i>
-            <div class="file-details">
-                <span class="file-name">${data.name}</span>
-                <span class="file-size">${(data.size / (1024 * 1024)).toFixed(2)} MB</span>
-            </div>
+        <div class="batch-file-list" style="max-height: 200px; overflow-y: auto; margin-bottom: 1rem;">
+            ${filesList.map(f => `
+                <div class="batch-file-item done">
+                    <i class="ri-check-line batch-file-icon"></i>
+                    <div class="batch-file-details">
+                        <span class="batch-file-name">${f.name}</span>
+                        <span class="batch-file-size">${formatFileSize(f.size)}</span>
+                    </div>
+                    <div class="share-link-box compact">
+                        <input type="text" class="share-link-value" value="${f.url}" readonly />
+                        <button class="btn-copy btn-copy-link" data-url="${f.url}" title="Copy link">
+                            <i class="ri-file-copy-line"></i>
+                        </button>
+                    </div>
+                </div>
+            `).join('')}
         </div>
-        <div class="share-link-box">
-            <input type="text" id="shareLinkInput" value="${data.url}" readonly />
-            <button class="btn-copy" id="copyLinkBtn" title="Copy link">
-                <i class="ri-file-copy-line"></i>
-            </button>
-        </div>
-        <p class="share-link-note">Link expires in ${data.expiresIn}</p>
+        <p class="share-link-note">${filesList.length} file${filesList.length > 1 ? 's' : ''} \u2022 ${formatFileSize(totalSize)} \u2022 Links expire in ${filesList[0].expiresIn}</p>
     `;
     modalActions.innerHTML = `
+        <button class="btn btn-secondary" id="btnCopyAll"><i class="ri-file-copy-line"></i> Copy All Links</button>
         <button class="btn btn-primary" id="btnCloseShare">Done</button>
     `;
 
@@ -524,12 +887,20 @@ function showShareLinkResult(data) {
         modalOverlay.classList.add('hidden');
     };
 
-    document.getElementById('copyLinkBtn').onclick = () => {
-        const input = document.getElementById('shareLinkInput');
-        navigator.clipboard.writeText(input.value).then(() => {
-            showToast('Link copied to clipboard!', 'success');
+    document.getElementById('btnCopyAll').onclick = () => {
+        const allLinks = filesList.map(f => f.url).join('\n');
+        navigator.clipboard.writeText(allLinks).then(() => {
+            showToast('All links copied to clipboard!', 'success');
         });
     };
+
+    modalContent.querySelectorAll('.btn-copy-link').forEach(btn => {
+        btn.addEventListener('click', () => {
+            navigator.clipboard.writeText(btn.dataset.url).then(() => {
+                showToast('Link copied!', 'success');
+            });
+        });
+    });
 }
 
 // Start
