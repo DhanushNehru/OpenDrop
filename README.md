@@ -14,6 +14,8 @@ Transfer files across your local network directly from device to device using We
 
 ---
 
+<a href="https://www.producthunt.com/products/opendrop?embed=true&amp;utm_source=badge-featured&amp;utm_medium=badge&amp;utm_campaign=badge-opendrop" target="_blank" rel="noopener noreferrer"><img alt="OpenDrop - Transfer files across local network directly via devices | Product Hunt" width="250" height="54" src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1093455&amp;theme=light&amp;t=1773318343132"></a>
+
 ## Table of Contents
 
 - [About](#about)
