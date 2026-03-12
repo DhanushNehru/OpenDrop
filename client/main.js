@@ -762,29 +762,63 @@ function handleIncomingBatchHeader(msg, senderId) {
 }
 
 function renderIncomingBatchList() {
-    batchIncomingList.innerHTML = incomingBatch.map((f, i) => {
-        if (!f) return '';
+    // Clear existing list items
+    while (batchIncomingList.firstChild) {
+        batchIncomingList.removeChild(batchIncomingList.firstChild);
+    }
+
+    incomingBatch.forEach((f, i) => {
+        if (!f) return;
+
         let statusClass = 'pending';
         let statusIcon = 'ri-time-line';
-        if (i < incomingBatchReceived) { statusClass = 'done'; statusIcon = 'ri-check-line'; }
-        else if (i === currentIncomingIndex) { statusClass = 'active'; statusIcon = 'ri-loader-4-line'; }
+        if (i < incomingBatchReceived) {
+            statusClass = 'done';
+            statusIcon = 'ri-check-line';
+        } else if (i === currentIncomingIndex) {
+            statusClass = 'active';
+            statusIcon = 'ri-loader-4-line';
+        }
 
-        return `
-            <div class="batch-file-item ${statusClass}">
-                <i class="${statusIcon} batch-file-icon"></i>
-                <div class="batch-file-details">
-                    <span class="batch-file-name">${f.name}</span>
-                    <span class="batch-file-size">${formatFileSize(f.size)}</span>
-                </div>
-                <div class="batch-file-progress-wrap">
-                    <div class="progress-container small">
-                        <div class="progress-bar" id="recvProgress-${i}" style="width:${i < incomingBatchReceived ? '100' : '0'}%"></div>
-                    </div>
-                </div>
-            </div>
-        `;
-    }).join('');
+        const item = document.createElement('div');
+        item.className = `batch-file-item ${statusClass}`;
 
+        const icon = document.createElement('i');
+        icon.className = `${statusIcon} batch-file-icon`;
+        item.appendChild(icon);
+
+        const details = document.createElement('div');
+        details.className = 'batch-file-details';
+
+        const nameSpan = document.createElement('span');
+        nameSpan.className = 'batch-file-name';
+        nameSpan.textContent = f.name;
+        details.appendChild(nameSpan);
+
+        const sizeSpan = document.createElement('span');
+        sizeSpan.className = 'batch-file-size';
+        sizeSpan.textContent = formatFileSize(f.size);
+        details.appendChild(sizeSpan);
+
+        item.appendChild(details);
+
+        const progressWrap = document.createElement('div');
+        progressWrap.className = 'batch-file-progress-wrap';
+
+        const progressContainer = document.createElement('div');
+        progressContainer.className = 'progress-container small';
+
+        const progressBar = document.createElement('div');
+        progressBar.className = 'progress-bar';
+        progressBar.id = `recvProgress-${i}`;
+        progressBar.style.width = (i < incomingBatchReceived ? '100' : '0') + '%';
+
+        progressContainer.appendChild(progressBar);
+        progressWrap.appendChild(progressContainer);
+        item.appendChild(progressWrap);
+
+        batchIncomingList.appendChild(item);
+    });
     batchIncomingSummary.textContent = `${incomingBatchReceived}/${incomingBatchTotal} received`;
 }
 
