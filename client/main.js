@@ -495,28 +495,54 @@ async function startBatchTransfer(peerId, files) {
 }
 
 function renderBatchProgressList() {
-    batchProgressList.innerHTML = sendQueue.map((item, i) => {
+    // Clear existing content
+    batchProgressList.innerHTML = '';
+
+    sendQueue.forEach((item, i) => {
         let statusClass = 'pending';
         let statusIcon = 'ri-time-line';
         if (i < currentSendIndex) { statusClass = 'done'; statusIcon = 'ri-check-line'; }
         else if (i === currentSendIndex) { statusClass = 'active'; statusIcon = 'ri-loader-4-line'; }
 
-        return `
-            <div class="batch-file-item ${statusClass}">
-                <i class="${statusIcon} batch-file-icon"></i>
-                <div class="batch-file-details">
-                    <span class="batch-file-name">${item.file.name}</span>
-                    <span class="batch-file-size">${formatFileSize(item.file.size)}</span>
-                </div>
-                <div class="batch-file-progress-wrap">
-                    <div class="progress-container small">
-                        <div class="progress-bar" id="sendProgress-${i}" style="width:${i < currentSendIndex ? '100' : '0'}%"></div>
-                    </div>
-                </div>
-            </div>
-        `;
-    }).join('');
+        const itemDiv = document.createElement('div');
+        itemDiv.className = `batch-file-item ${statusClass}`;
 
+        const iconEl = document.createElement('i');
+        iconEl.className = `${statusIcon} batch-file-icon`;
+        itemDiv.appendChild(iconEl);
+
+        const detailsDiv = document.createElement('div');
+        detailsDiv.className = 'batch-file-details';
+
+        const nameSpan = document.createElement('span');
+        nameSpan.className = 'batch-file-name';
+        nameSpan.textContent = item.file.name;
+
+        const sizeSpan = document.createElement('span');
+        sizeSpan.className = 'batch-file-size';
+        sizeSpan.textContent = formatFileSize(item.file.size);
+
+        detailsDiv.appendChild(nameSpan);
+        detailsDiv.appendChild(sizeSpan);
+        itemDiv.appendChild(detailsDiv);
+
+        const progressWrapDiv = document.createElement('div');
+        progressWrapDiv.className = 'batch-file-progress-wrap';
+
+        const progressContainerDiv = document.createElement('div');
+        progressContainerDiv.className = 'progress-container small';
+
+        const progressBarDiv = document.createElement('div');
+        progressBarDiv.className = 'progress-bar';
+        progressBarDiv.id = `sendProgress-${i}`;
+        progressBarDiv.style.width = (i < currentSendIndex ? '100' : '0') + '%';
+
+        progressContainerDiv.appendChild(progressBarDiv);
+        progressWrapDiv.appendChild(progressContainerDiv);
+        itemDiv.appendChild(progressWrapDiv);
+
+        batchProgressList.appendChild(itemDiv);
+    });
     batchProgressSummary.textContent = `${Math.min(currentSendIndex, sendQueue.length)}/${sendQueue.length} completed`;
 }
 
