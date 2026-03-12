@@ -468,10 +468,27 @@ async function startBatchTransfer(peerId, files) {
     renderBatchProgressList();
     batchProgressActions.innerHTML = '';
 
-    // Ensure connection
-    if (!peer.connection || peer.connection.connectionState !== 'connected') {
+    // Ensure connection and open data channel before starting the queue
+    if (!peer.connection || peer.connection.connectionState !== 'connected' || !peer.dataChannel || peer.dataChannel.readyState !== 'open') {
         await startConnection(peerId);
-        await new Promise(r => setTimeout(r, 1000));
+
+        const maxWaitMs = 5000;
+        const intervalMs = 100;
+        const startTime = Date.now();
+
+        while (Date.now() - startTime < maxWaitMs) {
+            const updatedPeer = peers.get(peerId);
+            if (
+                updatedPeer &&
+                updatedPeer.connection &&
+                updatedPeer.connection.connectionState === 'connected' &&
+                updatedPeer.dataChannel &&
+                updatedPeer.dataChannel.readyState === 'open'
+            ) {
+                break;
+            }
+            await new Promise(r => setTimeout(r, intervalMs));
+        }
     }
 
     sendNextInQueue(peerId);
