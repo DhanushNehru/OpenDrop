@@ -403,25 +403,53 @@ function removeBatchFile(index) {
 }
 
 function renderBatchFileList() {
-    batchFileList.innerHTML = batchFiles.map((f, i) => `
-        <div class="batch-file-item">
-            <i class="ri-file-line batch-file-icon"></i>
-            <div class="batch-file-details">
-                <span class="batch-file-name">${f.name}</span>
-                <span class="batch-file-size">${formatFileSize(f.size)}</span>
-            </div>
-            <button class="batch-file-remove" data-index="${i}" title="Remove">
-                <i class="ri-close-line"></i>
-            </button>
-        </div>
-    `).join('');
+    // Clear existing list items
+    while (batchFileList.firstChild) {
+        batchFileList.removeChild(batchFileList.firstChild);
+    }
+
+    // Rebuild list using DOM APIs to avoid injecting raw HTML
+    batchFiles.forEach((f, i) => {
+        const item = document.createElement('div');
+        item.className = 'batch-file-item';
+
+        const icon = document.createElement('i');
+        icon.className = 'ri-file-line batch-file-icon';
+        item.appendChild(icon);
+
+        const details = document.createElement('div');
+        details.className = 'batch-file-details';
+
+        const nameSpan = document.createElement('span');
+        nameSpan.className = 'batch-file-name';
+        nameSpan.textContent = f.name;
+
+        const sizeSpan = document.createElement('span');
+        sizeSpan.className = 'batch-file-size';
+        sizeSpan.textContent = formatFileSize(f.size);
+
+        details.appendChild(nameSpan);
+        details.appendChild(sizeSpan);
+        item.appendChild(details);
+
+        const removeButton = document.createElement('button');
+        removeButton.className = 'batch-file-remove';
+        removeButton.dataset.index = String(i);
+        removeButton.title = 'Remove';
+
+        const closeIcon = document.createElement('i');
+        closeIcon.className = 'ri-close-line';
+        removeButton.appendChild(closeIcon);
+
+        // Attach click handler directly
+        removeButton.addEventListener('click', () => removeBatchFile(i));
+
+        item.appendChild(removeButton);
+        batchFileList.appendChild(item);
+    });
 
     const totalSize = batchFiles.reduce((s, f) => s + f.size, 0);
     batchSummary.textContent = `${batchFiles.length} file${batchFiles.length !== 1 ? 's' : ''} \u2022 ${formatFileSize(totalSize)}`;
-
-    batchFileList.querySelectorAll('.batch-file-remove').forEach(btn => {
-        btn.addEventListener('click', () => removeBatchFile(parseInt(btn.dataset.index)));
-    });
 }
 
 // --- Batch Transfer (WebRTC, sequential per-file) ---
