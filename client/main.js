@@ -413,7 +413,7 @@ function renderBatchFileList() {
         <div class="batch-file-item">
             <i class="ri-file-line batch-file-icon"></i>
             <div class="batch-file-details">
-                <span class="batch-file-name">${escapeHtml(f.name)}</span>
+                <span class="batch-file-name">${f.name}</span>
                 <span class="batch-file-size">${formatFileSize(f.size)}</span>
             </div>
             <button class="batch-file-remove" data-index="${i}" title="Remove">
@@ -424,10 +424,6 @@ function renderBatchFileList() {
 
     const totalSize = batchFiles.reduce((s, f) => s + f.size, 0);
     batchSummary.textContent = `${batchFiles.length} file${batchFiles.length !== 1 ? 's' : ''} \u2022 ${formatFileSize(totalSize)}`;
-
-    batchFileList.querySelectorAll('.batch-file-remove').forEach(btn => {
-        btn.addEventListener('click', () => removeBatchFile(parseInt(btn.dataset.index)));
-    });
 }
 
 // --- Batch Transfer (WebRTC, sequential per-file) ---
@@ -446,17 +442,37 @@ async function startBatchTransfer(peerId, files) {
     renderBatchProgressList();
     batchProgressActions.innerHTML = '';
 
-    // Ensure connection
-    if (!peer.connection || peer.connection.connectionState !== 'connected') {
+    // Ensure connection and open data channel before starting the queue
+    if (!peer.connection || peer.connection.connectionState !== 'connected' || !peer.dataChannel || peer.dataChannel.readyState !== 'open') {
         await startConnection(peerId);
-        await new Promise(r => setTimeout(r, 1000));
+
+        const maxWaitMs = 5000;
+        const intervalMs = 100;
+        const startTime = Date.now();
+
+        while (Date.now() - startTime < maxWaitMs) {
+            const updatedPeer = peers.get(peerId);
+            if (
+                updatedPeer &&
+                updatedPeer.connection &&
+                updatedPeer.connection.connectionState === 'connected' &&
+                updatedPeer.dataChannel &&
+                updatedPeer.dataChannel.readyState === 'open'
+            ) {
+                break;
+            }
+            await new Promise(r => setTimeout(r, intervalMs));
+        }
     }
 
     sendNextInQueue(peerId);
 }
 
 function renderBatchProgressList() {
-    batchProgressList.innerHTML = sendQueue.map((item, i) => {
+    // Clear existing content
+    batchProgressList.innerHTML = '';
+
+    sendQueue.forEach((item, i) => {
         let statusClass = 'pending';
         let statusIcon = 'ri-time-line';
         if (i < currentSendIndex) { statusClass = 'done'; statusIcon = 'ri-check-line'; }
@@ -466,7 +482,7 @@ function renderBatchProgressList() {
             <div class="batch-file-item ${statusClass}">
                 <i class="${statusIcon} batch-file-icon"></i>
                 <div class="batch-file-details">
-                    <span class="batch-file-name">${escapeHtml(item.file.name)}</span>
+                    <span class="batch-file-name">${item.file.name}</span>
                     <span class="batch-file-size">${formatFileSize(item.file.size)}</span>
                 </div>
                 <div class="batch-file-progress-wrap">
@@ -697,18 +713,29 @@ function handleIncomingBatchHeader(msg, senderId) {
 }
 
 function renderIncomingBatchList() {
-    batchIncomingList.innerHTML = incomingBatch.map((f, i) => {
-        if (!f) return '';
+    // Clear existing list items
+    while (batchIncomingList.firstChild) {
+        batchIncomingList.removeChild(batchIncomingList.firstChild);
+    }
+
+    incomingBatch.forEach((f, i) => {
+        if (!f) return;
+
         let statusClass = 'pending';
         let statusIcon = 'ri-time-line';
-        if (i < incomingBatchReceived) { statusClass = 'done'; statusIcon = 'ri-check-line'; }
-        else if (i === currentIncomingIndex) { statusClass = 'active'; statusIcon = 'ri-loader-4-line'; }
+        if (i < incomingBatchReceived) {
+            statusClass = 'done';
+            statusIcon = 'ri-check-line';
+        } else if (i === currentIncomingIndex) {
+            statusClass = 'active';
+            statusIcon = 'ri-loader-4-line';
+        }
 
         return `
             <div class="batch-file-item ${statusClass}">
                 <i class="${statusIcon} batch-file-icon"></i>
                 <div class="batch-file-details">
-                    <span class="batch-file-name">${escapeHtml(f.name)}</span>
+                    <span class="batch-file-name">${f.name}</span>
                     <span class="batch-file-size">${formatFileSize(f.size)}</span>
                 </div>
                 <div class="batch-file-progress-wrap">
