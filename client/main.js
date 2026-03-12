@@ -358,6 +358,12 @@ function formatFileSize(bytes) {
     return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
 }
 
+function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+}
+
 function openBatchModal(files, peerId) {
     batchFiles = [...files];
     currentTransferTarget = peerId;
@@ -407,7 +413,7 @@ function renderBatchFileList() {
         <div class="batch-file-item">
             <i class="ri-file-line batch-file-icon"></i>
             <div class="batch-file-details">
-                <span class="batch-file-name">${f.name}</span>
+                <span class="batch-file-name">${escapeHtml(f.name)}</span>
                 <span class="batch-file-size">${formatFileSize(f.size)}</span>
             </div>
             <button class="batch-file-remove" data-index="${i}" title="Remove">
@@ -460,7 +466,7 @@ function renderBatchProgressList() {
             <div class="batch-file-item ${statusClass}">
                 <i class="${statusIcon} batch-file-icon"></i>
                 <div class="batch-file-details">
-                    <span class="batch-file-name">${item.file.name}</span>
+                    <span class="batch-file-name">${escapeHtml(item.file.name)}</span>
                     <span class="batch-file-size">${formatFileSize(item.file.size)}</span>
                 </div>
                 <div class="batch-file-progress-wrap">
@@ -605,7 +611,7 @@ function handleIncomingFileRequest(msg, senderId) {
         <div class="file-info">
             <i class="ri-file-line"></i>
             <div class="file-details">
-                <span class="file-name">${msg.name}</span>
+                <span class="file-name">${escapeHtml(msg.name)}</span>
                 <span class="file-size">${formatFileSize(msg.size)}</span>
             </div>
         </div>
@@ -702,7 +708,7 @@ function renderIncomingBatchList() {
             <div class="batch-file-item ${statusClass}">
                 <i class="${statusIcon} batch-file-icon"></i>
                 <div class="batch-file-details">
-                    <span class="batch-file-name">${f.name}</span>
+                    <span class="batch-file-name">${escapeHtml(f.name)}</span>
                     <span class="batch-file-size">${formatFileSize(f.size)}</span>
                 </div>
                 <div class="batch-file-progress-wrap">
@@ -802,7 +808,7 @@ shareFileInput.addEventListener('change', async (e) => {
                 <div class="batch-file-item">
                     <i class="ri-upload-cloud-line batch-file-icon"></i>
                     <div class="batch-file-details">
-                        <span class="batch-file-name">${f.name}</span>
+                        <span class="batch-file-name">${escapeHtml(f.name)}</span>
                         <span class="batch-file-size">${formatFileSize(f.size)}</span>
                     </div>
                 </div>
@@ -864,20 +870,26 @@ function showShareLinkResult(data) {
                 <div class="batch-file-item done">
                     <i class="ri-check-line batch-file-icon"></i>
                     <div class="batch-file-details">
-                        <span class="batch-file-name">${f.name}</span>
+                        <span class="batch-file-name">${escapeHtml(f.name)}</span>
                         <span class="batch-file-size">${formatFileSize(f.size)}</span>
                     </div>
                     <div class="share-link-box compact">
-                        <input type="text" class="share-link-value" value="${f.url}" readonly />
-                        <button class="btn-copy btn-copy-link" data-url="${f.url}" title="Copy link">
+                        <input type="text" class="share-link-value" value="" readonly />
+                        <button class="btn-copy btn-copy-link" title="Copy link">
                             <i class="ri-file-copy-line"></i>
                         </button>
                     </div>
                 </div>
             `).join('')}
         </div>
-        <p class="share-link-note">${filesList.length} file${filesList.length > 1 ? 's' : ''} \u2022 ${formatFileSize(totalSize)} \u2022 Links expire in ${filesList[0].expiresIn}</p>
+        <p class="share-link-note">${filesList.length} file${filesList.length > 1 ? 's' : ''} \u2022 ${formatFileSize(totalSize)} \u2022 Links expire in ${escapeHtml(filesList[0].expiresIn)}</p>
     `;
+
+    // Safely set URL values via DOM APIs to prevent attribute injection
+    modalContent.querySelectorAll('.share-link-value').forEach((input, i) => {
+        input.value = filesList[i].url;
+    });
+
     modalActions.innerHTML = `
         <button class="btn btn-secondary" id="btnCopyAll"><i class="ri-file-copy-line"></i> Copy All Links</button>
         <button class="btn btn-primary" id="btnCloseShare">Done</button>
@@ -894,9 +906,9 @@ function showShareLinkResult(data) {
         });
     };
 
-    modalContent.querySelectorAll('.btn-copy-link').forEach(btn => {
+    modalContent.querySelectorAll('.btn-copy-link').forEach((btn, i) => {
         btn.addEventListener('click', () => {
-            navigator.clipboard.writeText(btn.dataset.url).then(() => {
+            navigator.clipboard.writeText(filesList[i].url).then(() => {
                 showToast('Link copied!', 'success');
             });
         });
