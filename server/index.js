@@ -73,6 +73,18 @@ app.post('/upload', upload.array('files', 20), (req, res) => {
         };
     });
 
+    // Backwards compatibility:
+    // - If exactly one file is uploaded, return both the legacy single-object shape
+    //   and the new `{ files: [...] }` shape.
+    // - If multiple files are uploaded, return only `{ files: [...] }`.
+    if (results.length === 1) {
+        const file = results[0];
+        return res.json({
+            ...file,
+            files: [file]
+        });
+    }
+
     res.json({ files: results });
 });
 
