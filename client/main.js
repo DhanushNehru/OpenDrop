@@ -882,35 +882,71 @@ function receiveChunk(data) {
 function handleFileComplete(msg) {
     if (!incomingBatch) return;
 
-      // Ensure the completed file index matches the file currently being received.
-     if (msg.index !== incomingBatch.currentFileIndex) {
-         console.warn('Out-of-order fileComplete message; resetting incoming batch', {
-             expectedIndex: incomingBatch.currentFileIndex,
-             receivedIndex: msg.index,
-         });
-         // Reset transfer state to avoid associating incorrect data with a file.
-         incomingBatch = null;
-         receivedChunks = [];
-         currentFileReceivedSize = 0;
-         batchReceivedSize = 0;
-            // Also clear any global transfer-in-progress flag and close the incoming transfer UI.
-          if (typeof transferInProgress !== 'undefined') {
-              transferInProgress = false;
-          }
-          // If there is a dedicated helper to close the incoming modal, use it defensively.
-          if (typeof closeIncomingModal === 'function') {
-              closeIncomingModal();
-          } else {
-              // Fallback: hide a likely incoming-transfer modal element if present.
-              const incomingModalEl = document.getElementById('incomingModal');
-              if (incomingModalEl) {
-                  incomingModalEl.classList.add('hidden');
-              }
-          }
-         return;
-     }
+    // Coerce the incoming index to an integer (data channel JSON may deserialize as string).
+    let completedIndex = msg.index;
+    if (typeof completedIndex === 'string') {
+        completedIndex = parseInt(completedIndex, 10);
+    }
 
-    const fileInfo = incomingBatch.files[msg.index];
+    // Validate the coerced index; treat invalid indices as out-of-order.
+    if (!Number.isInteger(completedIndex)) {
+        console.warn('Invalid fileComplete index; resetting incoming batch', {
+            expectedIndex: incomingBatch.currentFileIndex,
+            receivedIndex: msg.index,
+            normalizedIndex: completedIndex,
+        });
+        // Reset transfer state to avoid associating incorrect data with a file.
+        incomingBatch = null;
+        receivedChunks = [];
+        currentFileReceivedSize = 0;
+        batchReceivedSize = 0;
+        // Also clear any global transfer-in-progress flag and close the incoming transfer UI.
+        if (typeof transferInProgress !== 'undefined') {
+            transferInProgress = false;
+        }
+        // If there is a dedicated helper to close the incoming modal, use it defensively.
+        if (typeof closeIncomingModal === 'function') {
+            closeIncomingModal();
+        } else {
+            // Fallback: hide a likely incoming-transfer modal element if present.
+            const incomingModalEl = document.getElementById('incomingModal');
+            if (incomingModalEl) {
+                incomingModalEl.classList.add('hidden');
+            }
+        }
+        return;
+    }
+
+    // Ensure the completed file index matches the file currently being received.
+    if (completedIndex !== incomingBatch.currentFileIndex) {
+        console.warn('Out-of-order fileComplete message; resetting incoming batch', {
+            expectedIndex: incomingBatch.currentFileIndex,
+            receivedIndex: msg.index,
+            normalizedIndex: completedIndex,
+        });
+        // Reset transfer state to avoid associating incorrect data with a file.
+        incomingBatch = null;
+        receivedChunks = [];
+        currentFileReceivedSize = 0;
+        batchReceivedSize = 0;
+        // Also clear any global transfer-in-progress flag and close the incoming transfer UI.
+        if (typeof transferInProgress !== 'undefined') {
+            transferInProgress = false;
+        }
+        // If there is a dedicated helper to close the incoming modal, use it defensively.
+        if (typeof closeIncomingModal === 'function') {
+            closeIncomingModal();
+        } else {
+            // Fallback: hide a likely incoming-transfer modal element if present.
+            const incomingModalEl = document.getElementById('incomingModal');
+            if (incomingModalEl) {
+                incomingModalEl.classList.add('hidden');
+            }
+        }
+        return;
+    }
+
+    const fileInfo = incomingBatch.files[completedIndex];
 
      if (!fileInfo) {
          console.warn('Missing file info for completed file; resetting incoming batch', {
