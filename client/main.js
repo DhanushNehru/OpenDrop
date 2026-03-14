@@ -149,9 +149,17 @@ function addPeer(id, name) {
         <div class="peer-name">${name}</div>
     `;
 
-    // Click to send file
+    // Click to send file - start connection immediately when clicking on peer
     el.addEventListener('click', () => {
         currentTransferTarget = id;
+        
+        // Start WebRTC connection immediately when user clicks on peer
+        // This gives time for connection to establish before file is selected
+        const peer = peers.get(id);
+        if (!peer.connection || peer.connection.connectionState !== 'connected') {
+            startConnection(id);
+        }
+        
         fileInput.click();
     });
 
@@ -179,6 +187,16 @@ function getOrCreateConnection(peerId) {
 
     if (!peer.connection) {
         const pc = new RTCPeerConnection(rtcConfig);
+
+        // Track connection state
+        pc.onconnectionstatechange = () => {
+            console.log(`Connection state with ${peer.name}: ${pc.connectionState}`);
+            if (pc.connectionState === 'connected') {
+                showToast(`Connected to ${peer.name}`, 'success');
+            } else if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected') {
+                showToast(`Connection lost with ${peer.name}`, 'error');
+            }
+        };
 
         // Output ICE candidates to signaling server
         pc.onicecandidate = (e) => {
@@ -263,20 +281,78 @@ fileInput.addEventListener('change', async (e) => {
     const file = e.target.files[0];
     if (!file || !currentTransferTarget) return;
 
-    // If connection isn't established, establish it first
     const peer = peers.get(currentTransferTarget);
-    if (!peer.connection || peer.connection.connectionState !== 'connected') {
-        await startConnection(currentTransferTarget);
-        // Wait briefly for connection (in reality, should listen for connection state change)
-        setTimeout(() => sendFileHeader(currentTransferTarget, file), 1000);
-    } else {
+    
+    // Check if connection exists and is connected
+    if (peer.connection && peer.connection.connectionState === 'connected') {
         sendFileHeader(currentTransferTarget, file);
+    } else {
+        // Connection is being established (or was just started on peer click)
+        // Wait for connection to be ready with exponential backoff
+        let attempts = 0;
+        const maxAttempts = 10;
+        const checkConnection = () => {
+            attempts++;
+            if (peer.connection && peer.connection.connectionState === 'connected') {
+                sendFileHeader(currentTransferTarget, file);
+            } else if (attempts < maxAttempts) {
+                // Exponential backoff: 100ms, 200ms, 400ms, etc.
+                setTimeout(checkConnection, 100 * Math.pow(2, attempts));
+            } else {
+                showToast('Connection failed. Try again.', 'error');
+            }
+        };
+        checkConnection();
     }
 
     fileInput.value = ''; // Reset input
 });
 
 function sendFileHeader(peerId, file) {
+    const peer = peers.get(peerId);
+    if (!peer || !peer.dataChannel) {
+        showToast('Connection not ready. Trying again...', 'info');
+        
+        // Try to start connection and wait for it
+        startConnection(peerId);
+        let attempts = 0;
+        const checkDataChannel = () => {
+            attempts++;
+            if (peer.dataChannel && peer.dataChannel.readyState === 'open') {
+                doSendFileHeader(peerId, file);
+            } else if (attempts < 10) {
+                setTimeout(checkDataChannel, 200);
+            } else {
+                showToast('Connection failed. Try again.', 'error');
+            }
+        };
+        setTimeout(checkDataChannel, 500);
+        return;
+    }
+    
+    if (peer.dataChannel.readyState !== 'open') {
+        showToast('Connection not ready. Trying again...', 'info');
+        
+        // Wait for data channel to open
+        let attempts = 0;
+        const checkDataChannel = () => {
+            attempts++;
+            if (peer.dataChannel.readyState === 'open') {
+                doSendFileHeader(peerId, file);
+            } else if (attempts < 10) {
+                setTimeout(checkDataChannel, 200);
+            } else {
+                showToast('Connection failed. Try again.', 'error');
+            }
+        };
+        setTimeout(checkDataChannel, 200);
+        return;
+    }
+    
+    doSendFileHeader(peerId, file);
+}
+
+function doSendFileHeader(peerId, file) {
     const peer = peers.get(peerId);
     if (!peer || !peer.dataChannel || peer.dataChannel.readyState !== 'open') {
         showToast('Connection not ready. Try again.', 'error');
