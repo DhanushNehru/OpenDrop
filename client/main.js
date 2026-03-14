@@ -352,21 +352,44 @@ fileInput.addEventListener('change', async (e) => {
 async function initiateTransfer(peerId, files) {
     const peer = peers.get(peerId);
 
-    if (!peer.connection || peer.connection.connectionState !== 'connected') {
-        await startConnection(peerId);
-        const waitForChannel = () => {
-            const p = peers.get(peerId);
-            if (p?.dataChannel?.readyState === 'open') {
-                sendBatchHeader(peerId, files);
-            } else {
-                setTimeout(waitForChannel, 200);
-            }
-        };
-        setTimeout(waitForChannel, 500);
-    } else {
-        sendBatchHeader(peerId, files);
+     if (!peer.connection || peer.connection.connectionState !== 'connected') {
+         await startConnection(peerId);
+
+         const maxWaitMs = 10000; // maximum time to wait for data channel to open
+         const pollIntervalMs = 200;
+         const startTime = Date.now();
+
+         const waitForChannel = () => {
+             const elapsed = Date.now() - startTime;
+             const p = peers.get(peerId);
+             if (p?.dataChannel?.readyState === 'open')
+                 {
+                 sendBatchHeader(peerId, files);
+             } 
+             else if (elapsed >= maxWaitMs)
+                 {
+                 // Timeout: reset any pending transfer state and notify the user
+                 if (typeof transferInProgress !== 'undefined') {
+                     transferInProgress = false;
+                 }
+                 if (typeof outgoingBatch !== 'undefined')
+                     {
+                     outgoingBatch = null;
+                 }
+                 showToast('Unable to establish data channel. Please ensure the recipient is online and try again.', 'error');
+             } 
+             else 
+                {
+                 setTimeout(waitForChannel, pollIntervalMs);
+             }
+         };
+         setTimeout(waitForChannel, 500);
+     } 
+     else 
+        {
+         sendBatchHeader(peerId, files);
+     }
     }
-}
 
 // ---------------------------
 // Sender Flow
@@ -461,8 +484,30 @@ function sendNextFileInBatch(peerId) {
     if (!batch) return;
 
     const peer = peers.get(peerId);
-    const dc = peer.dataChannel;
+    const dc = peer && peer.dataChannel ? peer.dataChannel : null;
+     if (!dc || dc.readyState !== 'open') {
+         const statusEl = document.getElementById('senderStatusText');
+         if (statusEl) {
+             statusEl.textContent = 'Transfer canceled: receiver disconnected.';
+         }
+         if (typeof modalOverlay !== 'undefined' && modalOverlay) {
+             modalOverlay.classList.add('hidden');
+         }
+         const modalEl = document.querySelector('.modal');
+         if (modalEl) {
+             modalEl.classList.remove('batch-modal');
+         }
+         outgoingBatch = null;
+         transferInProgress = false;
+         return;
+     }
     const fileIndex = batch.currentFileIndex;
+     if (fileIndex < 0 || fileIndex >= batch.files.length) {
+         // Invalid index; reset transfer state to avoid inconsistent behavior.
+         outgoingBatch = null;
+         transferInProgress = false;
+         return;
+     }
     const file = batch.files[fileIndex];
 
     // Mark this file as active in sender UI
@@ -487,7 +532,16 @@ function sendNextFileInBatch(peerId) {
         const slice = file.slice(o, o + CHUNK_SIZE);
         const reader = new FileReader();
         reader.onload = (evt) => {
-            if (dc.readyState !== 'open') return;
+           // If the data channel is no longer available, abort and reset state.
+             if (!dc || dc.readyState !== 'open') {
+                 outgoingBatch = null;
+                 transferInProgress = false;
+                 const statusEl = document.getElementById('senderStatusText');
+                 if (statusEl) {
+                     statusEl.textContent = 'Transfer canceled: receiver disconnected.';
+                 }
+                 return;
+             }
 
             dc.send(evt.target.result);
             offset += evt.target.result.byteLength;
@@ -578,14 +632,28 @@ function handleIncomingBatchRequest(msg, senderId) {
         showToast(`Declined files from ${sender.name} — transfer in progress`, 'error');
         return;
     }
+    // Validate incoming batch header from untrusted peer
+     const files = msg && msg.files;
+     const totalSize = msg && msg.totalSize;
+     const filesValid = Array.isArray(files);
+     const totalSizeValid =
+         typeof totalSize === 'number' && Number.isFinite(totalSize) && totalSize >= 0;
+     if (!filesValid || !totalSizeValid) {
+         if (sender.dataChannel?.readyState === 'open') {
+             sender.dataChannel.send(JSON.stringify({ type: 'batch-rejected' }));
+         }
+         console.warn('Received invalid batch-header from peer', senderId, msg);
+         showToast(`Received invalid file transfer request from ${sender.name}`, 'error');
+         return;
+     }
 
     transferInProgress = true;
-    const fileCount = msg.files.length;
+     const fileCount = files.length;
 
     incomingBatch = {
         senderId: senderId,
-        files: msg.files,
-        totalSize: msg.totalSize,
+        files: files,
+        totalSize: totalSize,
         currentFileIndex: -1,
         receivedFiles: [],
     };
@@ -600,29 +668,50 @@ function handleIncomingBatchRequest(msg, senderId) {
     modalContent.innerHTML = `
         <div class="batch-summary">
             <span>${fileCount} file${fileCount > 1 ? 's' : ''}</span>
-            <span class="file-size">${formatSize(msg.totalSize)}</span>
+            <span class="file-size">${formatSize(totalSize)}</span>
         </div>
         <div class="file-list" id="receiverFileList">
-            ${msg.files.map((f, i) => `
-                <div class="file-list-item" id="recvFile${i}">
-                    <i class="ri-file-line"></i>
-                    <div class="file-details">
-                        <span class="file-name">${f.name}</span>
-                        <span class="file-size">${formatSize(f.size)}</span>
-                    </div>
-                    <div class="file-progress-mini hidden" id="recvProgress${i}">
-                        <div class="progress-bar-mini" id="recvBar${i}"></div>
-                    </div>
-                    <div class="file-status" id="recvStatus${i}">
-                        <i class="ri-time-line"></i>
-                    </div>
-                </div>
-            `).join('')}
         </div>
         <div class="progress-container hidden" id="receiveOverallProgressContainer">
             <div class="progress-bar" id="receiveOverallBar"></div>
         </div>
     `;
+     const receiverFileListEl = document.getElementById('receiverFileList');
+     msg.files.forEach((f, i) => {
+         const itemEl = document.createElement('div');
+         itemEl.className = 'file-list-item';
+         itemEl.id = `recvFile${i}`;
+         const iconEl = document.createElement('i');
+         iconEl.className = 'ri-file-line';
+         itemEl.appendChild(iconEl);
+         const detailsEl = document.createElement('div');
+         detailsEl.className = 'file-details';
+         const nameEl = document.createElement('span');
+         nameEl.className = 'file-name';
+         nameEl.textContent = f.name;
+         detailsEl.appendChild(nameEl);
+         const sizeEl = document.createElement('span');
+         sizeEl.className = 'file-size';
+         sizeEl.textContent = formatSize(f.size);
+         detailsEl.appendChild(sizeEl);
+         itemEl.appendChild(detailsEl);
+         const progressMiniEl = document.createElement('div');
+         progressMiniEl.className = 'file-progress-mini hidden';
+         progressMiniEl.id = `recvProgress${i}`;
+         const progressBarMiniEl = document.createElement('div');
+         progressBarMiniEl.className = 'progress-bar-mini';
+         progressBarMiniEl.id = `recvBar${i}`;
+         progressMiniEl.appendChild(progressBarMiniEl);
+         itemEl.appendChild(progressMiniEl);
+         const statusEl = document.createElement('div');
+         statusEl.className = 'file-status';
+         statusEl.id = `recvStatus${i}`;
+         const statusIconEl = document.createElement('i');
+         statusIconEl.className = 'ri-time-line';
+         statusEl.appendChild(statusIconEl);
+         itemEl.appendChild(statusEl);
+         receiverFileListEl.appendChild(itemEl);
+     });
 
     modalActions.innerHTML = `
         <button class="btn btn-secondary" id="btnRejectBatch">Decline All</button>
@@ -685,7 +774,33 @@ function receiveChunk(data) {
 function handleFileComplete(msg) {
     if (!incomingBatch) return;
 
+      // Ensure the completed file index matches the file currently being received.
+     if (msg.index !== incomingBatch.currentFileIndex) {
+         console.warn('Out-of-order fileComplete message; resetting incoming batch', {
+             expectedIndex: incomingBatch.currentFileIndex,
+             receivedIndex: msg.index,
+         });
+         // Reset transfer state to avoid associating incorrect data with a file.
+         incomingBatch = null;
+         receivedChunks = [];
+         currentFileReceivedSize = 0;
+         batchReceivedSize = 0;
+         return;
+     }
+
     const fileInfo = incomingBatch.files[msg.index];
+
+     if (!fileInfo) {
+         console.warn('Missing file info for completed file; resetting incoming batch', {
+             index: msg.index,
+         });
+         incomingBatch = null;
+         receivedChunks = [];
+         currentFileReceivedSize = 0;
+         batchReceivedSize = 0;
+         return;
+     }
+
     const blob = new Blob(receivedChunks, { type: fileInfo.mime });
 
     incomingBatch.receivedFiles.push({ name: fileInfo.name, blob: blob });
@@ -717,6 +832,7 @@ function handleBatchComplete() {
             const btn = document.createElement('button');
             btn.className = 'file-download-btn';
             btn.title = `Download ${rf.name}`;
+            btn.setAttribute('aria-label', `Download ${rf.name}`);
             btn.innerHTML = '<i class="ri-download-line"></i>';
             btn.onclick = () => downloadBlob(rf.blob, rf.name);
             fileEl.appendChild(btn);
@@ -870,7 +986,7 @@ function showBatchShareResult(data) {
                 </div>
                 <div class="share-link-box">
                     <input type="text" id="shareLink${i}" value="${f.url}" readonly />
-                    <button class="btn-copy" id="copyBtn${i}" title="Copy link">
+                     <button class="btn-copy" id="copyBtn${i}" title="Copy link" aria-label="Copy link">
                         <i class="ri-file-copy-line"></i>
                     </button>
                 </div>
