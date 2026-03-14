@@ -518,8 +518,15 @@ function showSenderModal(peerName, files, totalSize) {
 
     document.getElementById('btnCancelSend').onclick = () => {
         const peer = peers.get(outgoingBatch?.targetPeerId);
-        if (peer?.dataChannel?.readyState === 'open') {
-            peer.dataChannel.send(JSON.stringify({ type: 'batch-cancelled' }));
+        if (peer?.dataChannel) {
+            if (peer.dataChannel.readyState === 'open') {
+                peer.dataChannel.send(JSON.stringify({ type: 'batch-cancelled' }));
+            }
+            try {
+                peer.dataChannel.close();
+            } catch (e) {
+                // Ignore errors while closing the data channel on cancel
+            }
         }
         outgoingBatch = null;
         transferInProgress = false;
